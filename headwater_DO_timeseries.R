@@ -5,9 +5,9 @@
 # 
 
 # Set working directory
-# setwd("Z:/Loire_DO")
+setwd("Z:/Loire_DO")
 # setwd("C:/Users/jake.diamond/Documents/Backup of Network/Loire_DO")
-setwd("//ly-lhq-srv/jake.diamond/Loire_DO")
+# setwd("//ly-lhq-srv/jake.diamond/Loire_DO")
 
 # Load libraries
 library(tidyverse)
@@ -100,7 +100,7 @@ th <- theme_bw() +
 
 # Load data
 # First get data path and names of files
-data_path <- "Data/Headwaters_DO/HOBO_raw_csv"
+data_path <- "Headwaters/Data/HOBO_raw_csv"
 files <- dir(data_path, pattern = "*.csv")
 
 # Then load all data into one dataframe
@@ -113,7 +113,7 @@ df <- tibble(filename = files) %>%
   unnest(cols = c(file_contents))
 
 # Load metadata
-meta <- read_excel("Data/Headwaters_DO/sensor_metadata.xlsx",
+meta <- read_excel("Headwaters/Data/sensor_metadata.xlsx",
                    sheet = 2,
                    col_types = c("numeric", "text", "text", 
                                  "text", "text",
@@ -164,14 +164,14 @@ p <- ggplot() +
   geom_line(data = df, aes(x = datetime,
                 y = a + temp * b),
             color = "red") +
-  geom_point(data = pts, aes(x = Datetime,
-                      y = DO),
-             color = "black",
-             size = 2) + 
-  geom_point(data = pts, aes(x = Datetime,
-                             y = a + temp * b),
-             color = "red",
-             size = 2) + 
+  # geom_point(data = pts, aes(x = Datetime,
+  #                     y = DO),
+  #            color = "black",
+  #            size = 2) + 
+  # geom_point(data = pts, aes(x = Datetime,
+  #                            y = a + temp * b),
+  #            color = "red",
+  #            size = 2) + 
   scale_x_datetime(breaks = xbrks,
                    date_labels = "%d") +
   scale_y_continuous(limits = c(-1, 12),

@@ -1,0 +1,180 @@
+---
+title: "Longitudinal profiles of DO"
+author: "Jacob Diamond"
+date: "17/09/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, cache=FALSE)
+```
+
+## Load data
+
+```{r}
+# Set working directory
+setwd("Z:/Loire_DO")
+
+# Load libraries
+library(lubridate)
+library(readxl)
+library(plotly)
+library(tidyverse)
+
+# Load data
+df_DO <- readRDS("Headwaters/Data/DO_time_series_wide") %>%
+  mutate(DOsat = if_else(DO_temp == 0,
+                        0,
+                        14.652 - 0.41022 * DO_temp + 0.007991 * 
+                          DO_temp^2 - 0.000077774 * DO_temp^3),
+         DO_per = DO * 100/ DOsat)
+
+# Get rid of bad data when sensors were buried or when out of water
+flood_sites1 <- c("Loise Feurs", "Mare Pont du diable", "Mare aval",
+                 "Vizézy amont Bullieux", "Toranche aval", "Mare Azieux")
+flood_sites2 <- c("Loise aval Poncins", "Loise Essertine en Donzy")
+df_DO <- df_DO %>%
+  filter(!(Site %in% flood_sites1 & between(datetime, 
+                                            ymd_hm("2019-08-06 16:00"),
+                                            ymd_hm("2019-08-29 16:45"))),
+         !(Site %in% flood_sites2 & between(datetime, 
+                                            ymd_hm("2019-08-06 16:00"),
+                                            ymd_hm("2019-08-30 10:30"))),
+         !(Site == "Coise aval Montrond" & between(datetime, 
+                                                   ymd_hm("2019-08-06 16:00"),
+                                                   ymd_hm("2019-09-11 11:30"))),
+         !(Site == "Loise amont Doise Salt" & between(datetime, 
+                                                   ymd_hm("2019-07-16 00:30"),
+                                                   ymd_hm("2019-07-20 20:00"))),
+         !(Site == "Loise aval Doise Salt" & between(datetime, 
+                                                      ymd_hm("2019-08-06 19:00"),
+                                                      ymd_hm("2019-08-30 10:15"))),
+         !(Site == "Loise Essertine en Donzy" & between(datetime, 
+                                                   ymd_hm("2019-07-20 22:15"),
+                                                   ymd_hm("2019-07-23 15:30"))),
+         !(Site == "Vizézy amont Bullieux" & between(datetime, 
+                                                   ymd_hm("2019-07-08 19:00"),
+                                                   ymd_hm("2019-07-16 14:15"))),
+         !(Site == "Vizézy amont Bullieux" & between(datetime, 
+                                                   ymd_hm("2019-07-24 23:00"),
+                                                   ymd_hm("2019-08-29 15:30"))),
+         !(Site == "Toranche Pontet" & between(datetime, 
+                                               ymd_hm("2019-07-12 19:45"),
+                                               ymd_hm("2019-07-21 17:30"))),
+         !(Site == "Toranche Pontet" & between(datetime, 
+                                               ymd_hm("2019-07-23 22:45"),
+                                               ymd_hm("2019-07-29 01:00"))),
+         !(Site == "Toranche Pontet" & between(datetime, 
+                                               ymd_hm("2019-07-31 03:45"),
+                                               ymd_hm("2019-08-06 17:30"))),
+         !(Site == "Doise" & between(datetime, 
+                                     ymd_hm("2019-07-14 15:00"),
+                                     ymd_hm("2019-07-20 17:15"))),
+         !(Site == "Doise" & between(datetime, 
+                                     ymd_hm("2019-08-03 20:15"),
+                                     ymd_hm("2019-08-06 12:30")))
+         
+         )
+
+# Use threshold of daily temperature and %sat
+df_DO_sum <- df_DO %>%
+  mutate(date = date(datetime)) %>%
+  group_by(Site,date) %>%
+  summarize(do_mean = mean(DO_per, na.rm = TRUE),
+            do_amp = max(DO_per, na.rm = T) - min(DO_per, na.rm = T),
+            wat_t = max(DO_temp, na.rm = T) - min(DO_temp, na.rm = T)) %>%
+  mutate(oow = if_else((do_mean > 90 & wat_t > 5) |
+                         (do_mean > 90 & do_amp < 2) |
+                         (wat_t > 8), "yes", "no"))
+
+# filter days that were out of water
+df_DO <- df_DO %>%
+  mutate(date = date(datetime)) %>%
+  left_join(df_DO_sum) %>%
+  filter(oow == "no")
+
+# add a column for west/east
+side <- tibble(watershed = c("Coise", "Loise", "Toranche", "Lignon", "Mare"),
+               side = c("east", "east", "east", "west", "west"))
+
+# Read in watershed info
+ws_meta <- read_excel("Headwaters/Data/Field measurements/sensor_metadata.xlsx",
+                      sheet = 7)
+
+df_DO <- left_join(side, select(ws_meta, site = name_site, watershed, area,
+                                   site_sensor, site_chem, site_code)) %>%
+  right_join(rename(df_DO, site_sensor = Site)) %>%
+  # mutate(site_code = str_c(str_sub(site_chem, 1, 3),
+  #                          str_pad(round(area), 3, pad = "0"))) %>%
+  mutate(side = fct_rev(side)) %>%
+  arrange(watershed, area) %>%
+  mutate(site_code = fct_inorder(site_code),
+         site = fct_inorder(site))
+
+# Plot it
+# p_long_met <- ggplot(df_met_l,
+#                  aes(x = date,
+#                      y = value,
+#                      color = site)) +
+#   geom_smooth() +
+#   theme_bw() +
+#   scale_color_viridis_d() +
+#   facet_wrap(~name, scales = "free", ncol = 1)
+# p_long_met
+# 
+# p_long_do <- ggplot(df_do,
+#                  aes(x = datetime,
+#                      y = DO,
+#                      color = site)) +
+#   geom_smooth() +
+#   theme_bw() +
+#   scale_color_viridis_d()
+# p_long_do
+# 
+tor <- filter(df_DO, Watershed == "Toranche")
+font <- filter(df_DO, Subwatershed == "Fontbonne")
+mp <- filter(df_DO, Subwatershed == "Moulin Piquet")
+cha <- filter(df_DO, Subwatershed == "Charpassonne")
+coi <- filter(df_DO, Subwatershed == "Coise")
+pot_conf <- filter(df_DO, site_sensor %in% c("Coise Larajasse", "Le Potensinet", "Coise le Nézel"))
+font_conf <- filter(df_DO, site_sensor %in% c("Fontbonne Bessenay", 
+                                              "Fontbonne Taillis de Montchervet",
+                                              "Ruisseau de Violay"))
+
+ay <- list(
+  tickfont = list(color = "red"),
+  overlaying = "y",
+  side = "right",
+  title = "conducitivity",
+  range = c(200,600)
+)
+
+
+plot_ly(
+  font_conf,               #indicate the dataframe you're using
+  x = ~datetime,         #identify x variable (keep the tilda)
+  y = ~DO,           #identify y variable (keep the tilda)           
+  text = ~site_sensor, 
+  color = ~site_sensor, #when hovering over a bubble will display this var.
+  type = "scatter",   #makes the plot a scatterplot
+  mode = "markers",   #indicates values are points (e.g. not lines)
+  marker = list(      #chooses properties of each bubble
+    opacity = 0.8)) %>%   #the smaller opacity the more see the bubble
+  # add_trace(font_conf, 
+  #           x = ~datetime,         #identify x variable (keep the tilda)
+  #           y = ~cond,           #identify y variable (keep the tilda)           
+  #           text = ~site_sensor, 
+  #           color = ~site_sensor, #when hovering over a bubble will display this var.
+  #           type = "scatter",   #makes the plot a scatterplot
+  #           mode = "markers",   #indicates values are points (e.g. not lines)
+  #           marker = list(      #chooses properties of each bubble
+  #             opacity = 0.8),
+  #           yaxis = "y2",
+  #           colorscale = "diverging") %>%
+  layout(title = 'Dissolved oxygen (mg/L)', #names plot
+         xaxis = list(showgrid = TRUE),       #makes x gridlines
+         yaxis = list(showgrid = TRUE),
+         yaxis2 = ay)       #makes y gridlines
+
+```
+

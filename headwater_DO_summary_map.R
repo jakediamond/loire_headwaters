@@ -5,8 +5,8 @@
 # 
 
 # Set working directory
-# setwd("Z:/Loire_DO")
-setwd("C:/Users/jake.diamond/Documents/Backup of Network/Loire_DO")
+setwd("Z:/Loire_DO")
+# setwd("C:/Users/jake.diamond/Documents/Backup of Network/Loire_DO")
 
 # Load libraries
 library(lubridate)
@@ -21,8 +21,8 @@ library(tmap)
 
 # Load data ---------------------------------------------------------------
 # Load DO summary data
-df_sum <- readRDS("Data/Headwaters_DO/DO_summary")
-df_met <- readRDS("Data/Headwaters_DO/headwaters_metabolism_mle_preds")
+df_sum <- readRDS("Headwaters/Data/DO_summary")
+# df_met <- readRDS("Data/Headwaters_DO/headwaters_metabolism_mle_preds")
 flood_sites1 <- c("Loise Feurs", "Mare Pont du diable", "Mare aval",
                   "Vizézy amont Bullieux", "Toranche aval", "Mare Azieux")
 flood_sites2 <- c("Loise aval Poncins", "Loise Essertine en Donzy")
@@ -81,46 +81,62 @@ df_ts <- readRDS("Data/Headwaters_DO/DO_time_series") %>%
          DO_per = DO * 100/ DOsat)
 
 # Load metadata
-meta <- read_excel("Data/Headwaters_DO/sensor_metadata.xlsx",
-                   sheet = 2,
-                   col_types = c("text", "text", 
+meta <- read_excel("Headwaters/Data/Field measurements/sensor_metadata.xlsx",
+                   sheet = "simple_meta",
+                   col_types = c("numeric", "text", "text", 
                                  "text", "text",
                                  "numeric", "numeric",
                                  "text", "numeric",
+                                 "text", "numeric", 
                                  "text", "numeric")) %>%
-  select(-3) %>%
-  rename(sensor = `Serial Number`)
+  select(-4, -5) %>%
+  # rename(sensor = `Serial Number`) %>%
+  filter(type == "DO") %>%
+  distinct(Site, .keep_all = TRUE)
 
 # Some data cleaning, make filename = sensor serial number, and correct datetime
 df_sum <- left_join(df_sum, meta)
-df_met <- left_join(df_met, meta)
+# df_met <- left_join(df_met, meta)
 
 # Convert both time series and summary to sf object
-df_ts_sf <- st_as_sf(df_ts, coords = c("Longitude", "Latitude"))
+# df_ts_sf <- st_as_sf(df_ts, coords = c("Longitude", "Latitude"))
 df_sum_sf <- st_as_sf(df_sum, coords = c("Longitude", "Latitude"))
-df_met_sf <- st_as_sf(df_met, coords = c("Longitude", "Latitude"))
+# df_met_sf <- st_as_sf(df_met, coords = c("Longitude", "Latitude"))
   
 # # Get river data
 riv <- st_read("Data/GIS/tnet_out.shp")
 riv <- st_set_crs(riv, 2154)
 riv <- st_transform(riv, 
                     "+proj=longlat +init=epsg:4326")
-# # Get watershed data
-ws <- st_read("Data/GIS/loire_headwater_delineated_subwatersheds.shp")
+
+# Read in Loire watershed files
+ws <- st_read("Headwaters/Data/GIS/watershed_sites_Loire_new2020.shp")
 ws <- st_set_crs(ws, 2154)
 ws <- st_transform(ws, 
                    "+proj=longlat +init=epsg:4326")
 # Some data cleaning
 ws <- mutate(ws,
-             Site = str_remove_all(name_site, " -"),
-             Site = str_remove_all(Site, "Pannissières"),
-             Site = str_remove_all(Site, "moulin de Salt"),
-             Site = str_replace(Site, "Donzy Salt", "Donzy"),
-             Site = str_replace(Site, "aval Doise", "aval Doise Salt"),
-             Site = str_replace(Site, "aval Poncins", "amont Poncins"),
-             Site = str_remove_all(Site, "La "),
-             Site = str_replace(Site, "Aval", "aval"),
-             Site = str_trim(Site)) %>%
+            Site = str_remove_all(name_site, " -"),
+            Site = str_remove_all(Site, "Pannissières"),
+            Site = str_remove_all(Site, "moulin de Salt"),
+            Site = str_replace(Site, "Donzy Salt", "Donzy"),
+            Site = str_replace(Site, "Ruisseau du M", "M"),
+            Site = str_replace(Site, "è", "é"),
+            Site = str_replace(Site, "au Ne", "le Né"),
+            Site = str_replace(Site, "aval Potensinet", "Larajasse"),
+            Site = str_replace(Site, "aval le Rieu", "aval Rieu"),
+            Site = str_replace(Site, "La Fontbonne amont Bessenay", "Fontbonne Bessenay"),
+            Site = str_replace(Site, "La Fontbonne", "Fontbonne aval"),
+            Site = str_replace(Site, "Le Carrat", "Carrat"),
+            Site = str_replace(Site, "Le Coizet", "Coizet"),
+            Site = str_replace(Site, "Le Violay", "Ruisseau de Violay"),
+            Site = str_replace(Site, "Bruyere", "la Bruyere"),
+            Site = str_replace(Site, "aval Doise", "aval Doise Salt"),
+            Site = str_replace(Site, "aval Poncins", "amont Poncins"),
+            Site = str_remove_all(Site, "La "),
+            Site = str_replace(Site, "Aval", "aval"),
+            Site = str_trim(Site)) %>%
+  filter(!(Site %in% c("Lignon aval Lanzon", "L'Anzon", "Genetay", "Le Lignon amont l'Anzon"))) %>%
   left_join(meta)
 
 # Read in some discharge data
@@ -167,7 +183,7 @@ df_n <- df_sum_sf %>%
   nest(-long_mean, -lat_mean, -Watershed)
 
 # Plotting function
-plot_fun <- function(plot_loc, watershed){
+plot_fun <- function(plot_loc, watershed, df = df_sum){
   set.seed(42)
   ws_plot = filter(ws, Watershed == watershed)
   riv_plot = st_intersection(riv, ws_plot)
@@ -176,7 +192,7 @@ plot_fun <- function(plot_loc, watershed){
   riv_plot = left_join(riv_plot, brks)
   bbox = st_bbox(ws_plot)
   ggmap(plot_loc) + 
-    geom_sf(data = ws_plot, alpha = 0.1, 
+    geom_sf(data = ws_plot, alpha = 0.01, 
             color = "black", size = 1.2, inherit.aes = FALSE) +
     geom_sf(data = riv_plot, aes(size = brks),
             color = "blue", inherit.aes = FALSE, show.legend = FALSE) +
@@ -186,7 +202,7 @@ plot_fun <- function(plot_loc, watershed){
     geom_point(data = filter(df, Watershed == watershed),
                aes(x = Longitude,
                    y = Latitude,
-                   color = min),
+                   color = min_DO),
                size = 2.2) +
     geom_text_repel(data = filter(df, Watershed == watershed),
                      aes(x = Longitude,
@@ -211,6 +227,7 @@ df_n <- df_n %>%
                       )
          )
 
+
 # Save data 
 walk2(df_n$Watershed,
       df_n$plots, 
@@ -219,7 +236,7 @@ walk2(df_n$Watershed,
                                 .x,
                                 "_satellite_minDO_zoom11.tiff"),
               device = "tiff",
-              dpi = 300,
+              dpi = 600,
               width = 18.4,
               height = 18.4,
               unit = "cm"))
